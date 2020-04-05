@@ -1,0 +1,55 @@
+{
+  "name": "webpack-split-chunks-analyzer",
+  "version": "0.0.0",
+  "description": "Debug how your application is dynamically loaded by webpack",
+  "keywords": [
+    "webpack",
+    "webpackplugin",
+    "webpack-plugin",
+    "webpackanalyzer",
+    "splitchunks",
+    "bundlesize"
+  ],
+  "url": "https://github.com/maclockard/webpack-split-chunks-analyzer",
+  "license": "MIT",
+  "author": "Mac Lockard (https://github.com/maclockard)",
+  "bin": {
+    "webpack-split-chunks-analyzer": "./bin/webpack-split-chunks-analyzer"
+  },
+  "main": "lib/index.js",
+  "files": [
+    "package.json",
+    "README.md",
+    "LICENSE",
+    "lib",
+    "bin"
+  ],
+  "engines": {
+    "node": "^12.16.0"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "./**/*.{ts,json,md}": [
+      "prettier --write"
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "yarn build -w",
+    "clean": "rm -rf lib node_modules"
+  },
+  "dependencies": {
+    "runtypes": "^4.2.0",
+    "tslib": "^1.11.1"
+  },
+  "devDependencies": {
+    "husky": "^4.2.3",
+    "lint-staged": "^10.1.1",
+    "prettier": "^2.0.2",
+    "typescript": "^3.8.3"
+  }
+}
