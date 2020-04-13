@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "es2018",
     "module": "commonjs",
-    "declaration": false,
+    "declaration": true,
+    "declarationMap": true,
     "sourceMap": true,
     "importHelpers": true,
     "strict": true,

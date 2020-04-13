@@ -1,0 +1,1 @@
+export { SplitChunksAnalyzerPlugin } from "./SplitChunksAnalyzerPlugin";
