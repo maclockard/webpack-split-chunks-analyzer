@@ -1,1 +1,1 @@
-export { SplitChunksAnalyzerPlugin } from "./SplitChunksAnalyzerPlugin";
+export { SplitChunksAnalyzerPlugin } from "./plugin";

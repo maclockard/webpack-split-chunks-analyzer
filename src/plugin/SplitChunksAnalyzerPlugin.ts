@@ -1,33 +1,34 @@
 import { promises } from "fs";
-import { Plugin, Compiler, Stats } from "webpack";
+import type { Compiler, Stats } from "webpack";
 import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import prettyBytes from "pretty-bytes";
-import { createPrettyGraph, GraphColors } from "./createPrettyGraph";
-import { TypedCompilation } from "./webpackTypes";
 import { chainFrom } from "transducist";
+import * as R from "runtypes";
+
 const { writeFile } = promises;
 
-export interface SplitChunksAnalyzerOptions {
-  readonly outputFileType?: "pdf" | "png" | "dot" | "jpg" | "jpeg" | "gv";
-  readonly outputFileName?: string;
-  readonly openOnFinish?: boolean;
-}
+export const SplitChunksAnalyzerOptions = R.Record({
+  outputFileName: R.String.optional(),
+  openOnFinish: R.Boolean.optional(),
+});
+
+export type SplitChunksAnalyzerOptions = R.Static<typeof SplitChunksAnalyzerOptions>;
 
 type RequiredOptions = Required<SplitChunksAnalyzerOptions>;
 
 const DEFAULT_OPTIONS: RequiredOptions = {
-  outputFileType: "pdf",
   outputFileName: "split-chunks-report",
   openOnFinish: true,
 };
 
-export class SplitChunksAnalyzerPlugin implements Plugin {
+export class SplitChunksAnalyzerPlugin {
   private options: RequiredOptions;
   private compiler: Compiler | undefined = undefined;
 
   public constructor(userOptions: SplitChunksAnalyzerOptions = {}) {
+    SplitChunksAnalyzerOptions.check(userOptions);
     this.options = { ...DEFAULT_OPTIONS, ...userOptions };
   }
 
@@ -41,36 +42,40 @@ export class SplitChunksAnalyzerPlugin implements Plugin {
       throw new Error("did not call apply before trying to analyze");
     }
 
-    // the included webpack types are a bit lacking
-    const compilation = (stats.compilation as unknown) as TypedCompilation;
+    // the included webpack types are a bit lacking so we cast
+    const compilation = stats.compilation;
 
-    const graph = createPrettyGraph();
+    const graph: Gra = createPrettyGraph();
 
     const prodAssetsIds = chainFrom(Object.keys(compilation.assets))
       .filter((id) => !id.endsWith(".LICENSE"))
       .filter((id) => compilation.assetsInfo.get(id)?.development !== true)
-      .toArray();
+      .toSet();
 
     const chunkGroups = compilation.chunkGroups;
-    const entrypointNames = Array.from(compilation.entrypoints.keys());
+    const entrypointIds = Array.from(compilation.entrypoints.keys());
 
     chainFrom(chunkGroups)
       .filter((chunkGroup) => chunkGroup.chunks.length > 0 || chunkGroup.getChildren().length > 0)
       .forEach((chunkGroup) => {
-        const resolvedName = chunkGroup.name ?? chunkGroup.id;
+        const splitOriginFileName = chunkGroup.origins[0]?.request.split("/");
+        const originName = splitOriginFileName?.[splitOriginFileName.length - 1];
+
         const chunkGroupSize = chainFrom(chunkGroup.getFiles())
-          .filter((id) => prodAssetsIds.includes(id))
+          .filter((id) => prodAssetsIds.has(id))
           .map((id) => compilation.assets[id])
           .map((asset) => asset.size())
           .sum();
 
-        graph.addNode(resolvedName, {
-          label: `${resolvedName} ${prettyBytes(chunkGroupSize)}`,
-          fillcolor: entrypointNames.includes(resolvedName) ? GraphColors.GREEN : undefined,
+        graph.addNode(chunkGroup.id, {
+          label: `${chunkGroup.name ?? originName ?? chunkGroup.id} ${prettyBytes(chunkGroupSize)}`,
+          fillcolor: entrypointIds.includes(chunkGroup.id) ? GraphColors.GREEN : undefined,
         });
 
-        const childOrders = chainFrom(Object.entries(chunkGroup.getChildrenByOrders()))
-          .map<[string, string[]]>(([orderType, groups]) => [orderType, groups.map((group) => group.name ?? group.id)])
+        const childOrders = chainFrom(
+          Object.entries(chunkGroup.getChildrenByOrders(stats.compilation.moduleGraph, stats.compilation.chunkGraph))
+        )
+          .map<[string, Set<string>]>(([orderType, groups]) => [orderType, new Set(groups.map((group) => group.id))])
           .toObject(
             ([orderType, _]) => orderType,
             ([_, groups]) => groups
@@ -78,11 +83,11 @@ export class SplitChunksAnalyzerPlugin implements Plugin {
 
         chunkGroup.getChildren().forEach((child) => {
           if (child.chunks.length > 0 || child.getChildren().length > 0) {
-            const isPrefetched = childOrders.prefetch?.includes(child.name ?? child.id) ?? false;
-            const isPreloaded = childOrders.preload?.includes(child.name ?? child.id) ?? false;
-            graph.addEdge(resolvedName, child.name ?? child.id, {
-              color: isPrefetched ? GraphColors.BLUE : isPreloaded ? GraphColors.ORANGE : undefined,
-              style: isPrefetched || isPreloaded ? "dashed" : undefined,
+            const isPrefetched = childOrders.prefetch?.has(child.id) ?? false;
+            const isPreloaded = childOrders.preload?.has(child.id) ?? false;
+            graph.addEdge(chunkGroup.id, child.id, {
+              color: isPrefetched ? GraphColors.BLUE : isPreloaded ? GraphColors.ORANGE : GraphColors.BLACK,
+              style: isPrefetched || isPreloaded ? "dashed" : "solid",
             });
           }
         });
