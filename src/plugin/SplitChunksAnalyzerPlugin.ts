@@ -1,16 +1,21 @@
 import { promises } from "fs";
-import type { Compiler, Stats } from "webpack";
+import type { Compiler, NormalModule, Stats } from "webpack";
 import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
-import prettyBytes from "pretty-bytes";
 import { chainFrom } from "transducist";
 import * as R from "runtypes";
+import ELK from "elkjs";
+import type { ElkPrimitiveEdge, ElkNode } from "elkjs";
+import prettyBytes from "pretty-bytes";
+import cheerio from "cheerio";
 
-const { writeFile } = promises;
+import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData } from "../sharedTypes";
+
+const { writeFile, readFile } = promises;
 
 export const SplitChunksAnalyzerOptions = R.Record({
-  outputFileName: R.String.optional(),
+  outputFile: R.String.optional(),
   openOnFinish: R.Boolean.optional(),
 });
 
@@ -19,13 +24,14 @@ export type SplitChunksAnalyzerOptions = R.Static<typeof SplitChunksAnalyzerOpti
 type RequiredOptions = Required<SplitChunksAnalyzerOptions>;
 
 const DEFAULT_OPTIONS: RequiredOptions = {
-  outputFileName: "split-chunks-report",
-  openOnFinish: true,
+  outputFile: "split-chunks-report.html",
+  openOnFinish: false,
 };
 
 export class SplitChunksAnalyzerPlugin {
   private options: RequiredOptions;
   private compiler: Compiler | undefined = undefined;
+  private elk = new ELK();
 
   public constructor(userOptions: SplitChunksAnalyzerOptions = {}) {
     SplitChunksAnalyzerOptions.check(userOptions);
@@ -45,7 +51,17 @@ export class SplitChunksAnalyzerPlugin {
     // the included webpack types are a bit lacking so we cast
     const compilation = stats.compilation;
 
-    const graph: Gra = createPrettyGraph();
+    const nodeDataIndex: Record<string, ChunkGroupNodeData> = {};
+    const edgeDataIndex: Record<string, ChunkGroupEdgeData> = {};
+    const elkGraph: ElkNode & { children: ElkNode[]; edges: ElkPrimitiveEdge[] } = {
+      layoutOptions: {
+        "elk.algorithm": "org.eclipse.elk.mrtree",
+        "org.eclipse.elk.direction": "DOWN",
+      },
+      id: "root",
+      children: [],
+      edges: [],
+    };
 
     const prodAssetsIds = chainFrom(Object.keys(compilation.assets))
       .filter((id) => !id.endsWith(".LICENSE"))
@@ -54,6 +70,8 @@ export class SplitChunksAnalyzerPlugin {
 
     const chunkGroups = compilation.chunkGroups;
     const entrypointIds = Array.from(compilation.entrypoints.keys());
+
+    let edgeIdCounter = 0;
 
     chainFrom(chunkGroups)
       .filter((chunkGroup) => chunkGroup.chunks.length > 0 || chunkGroup.getChildren().length > 0)
@@ -67,9 +85,55 @@ export class SplitChunksAnalyzerPlugin {
           .map((asset) => asset.size())
           .sum();
 
-        graph.addNode(chunkGroup.id, {
-          label: `${chunkGroup.name ?? originName ?? chunkGroup.id} ${prettyBytes(chunkGroupSize)}`,
-          fillcolor: entrypointIds.includes(chunkGroup.id) ? GraphColors.GREEN : undefined,
+        const chunks = chainFrom(chunkGroup.chunks)
+          .map<ChunkData>((chunk) => {
+            const chunkSize = chunk.size();
+
+            const modules = chainFrom(chunk.getModules())
+              .map((mod) => {
+                const moduleName =
+                  typeof (mod as NormalModule).userRequest === "string"
+                    ? (mod as NormalModule).userRequest
+                    : // TODO make this a real name
+                      "<unknown>";
+                const moduleSize = mod.size();
+
+                return {
+                  name: moduleName,
+                  size: moduleSize,
+                  displaySize: prettyBytes(moduleSize),
+                };
+              })
+              .toArray()
+              .sort((a, b) => b.size - a.size);
+
+            return {
+              name: chunk.files.values().next().value as string,
+              size: chunkSize,
+              displaySize: prettyBytes(chunkSize),
+              modules,
+            };
+          })
+          .filter((chunk) => prodAssetsIds.has(chunk.name))
+          .toArray()
+          .sort((a, b) => b.size - a.size);
+
+        const name = chunkGroup.name ?? originName ?? chunkGroup.id;
+
+        const displaySize = prettyBytes(chunkGroupSize);
+
+        nodeDataIndex[chunkGroup.id] = {
+          label: `${name} (${displaySize})`,
+          name,
+          size: chunkGroupSize,
+          displaySize,
+          entryPoint: entrypointIds.includes(chunkGroup.id),
+          chunks,
+        };
+        elkGraph.children.push({
+          id: chunkGroup.id,
+          width: 170,
+          height: 55,
         });
 
         const childOrders = chainFrom(
@@ -85,23 +149,58 @@ export class SplitChunksAnalyzerPlugin {
           if (child.chunks.length > 0 || child.getChildren().length > 0) {
             const isPrefetched = childOrders.prefetch?.has(child.id) ?? false;
             const isPreloaded = childOrders.preload?.has(child.id) ?? false;
-            graph.addEdge(chunkGroup.id, child.id, {
-              color: isPrefetched ? GraphColors.BLUE : isPreloaded ? GraphColors.ORANGE : GraphColors.BLACK,
-              style: isPrefetched || isPreloaded ? "dashed" : "solid",
+            const edgeId = (edgeIdCounter++).toString();
+
+            elkGraph.edges.push({
+              id: edgeId,
+              source: chunkGroup.id,
+              target: child.id,
             });
+
+            edgeDataIndex[edgeId] = {
+              kind: isPrefetched ? "prefetch" : isPreloaded ? "preload" : undefined,
+            };
           }
         });
       });
 
-    const renderedGraph = await new Promise((resolve, reject) =>
-      graph.render(this.options.outputFileType, (data) => resolve(data), reject)
-    );
+    const elkGraphResult = await this.elk.layout(elkGraph);
 
-    const outputFilePath = path.resolve(
-      this.compiler.outputPath,
-      this.options.outputFileName.concat(".", this.options.outputFileType)
-    );
-    await writeFile(outputFilePath, renderedGraph);
+    const graph: ChunkGroupGraph = {
+      buildName: stats.compilation.name ?? stats.hash ?? "<unknown>",
+      nodes: {},
+      edges: [],
+    };
+
+    for (const elkNode of elkGraphResult.children ?? []) {
+      graph.nodes[elkNode.id] = {
+        id: elkNode.id,
+        position: {
+          x: elkNode.x ?? 0,
+          y: elkNode.y ?? 0,
+        },
+        data: nodeDataIndex[elkNode.id],
+      };
+    }
+
+    for (const elkEdge of (elkGraphResult.edges as ElkPrimitiveEdge[] | undefined) ?? []) {
+      graph.edges.push({
+        id: elkEdge.id,
+        source: elkEdge.source,
+        target: elkEdge.target,
+        data: edgeDataIndex[elkEdge.id],
+      });
+    }
+
+    const outputFilePath = path.resolve(this.compiler.outputPath, this.options.outputFile);
+
+    const html = await readFile(path.resolve(__dirname, "../../dist/index.html"));
+
+    const $ = cheerio.load(html);
+
+    $("head").append(`<script type="application/json" id="data">${JSON.stringify(graph)}</script>`);
+
+    await writeFile(outputFilePath, $.html());
 
     if (this.options.openOnFinish) {
       await promisify(exec)(`open ${outputFilePath}`);

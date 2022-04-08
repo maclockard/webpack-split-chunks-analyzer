@@ -13,5 +13,3 @@ export enum GraphColors {
   COBALT = "#669EFF",
   GOLD = "#FFC940",
 }
-
-const FONT_NAME = "helvetica";

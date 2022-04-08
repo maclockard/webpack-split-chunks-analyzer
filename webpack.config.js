@@ -1,6 +1,6 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const InlineChunkHtmlPlugin = require("react-dev-utils/InlineChunkHtmlPlugin")
+const InlineChunkHtmlPlugin = require("react-dev-utils/InlineChunkHtmlPlugin");
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -38,18 +38,11 @@ module.exports = {
                   },
                 ],
                 "@babel/preset-typescript",
-                [
-                  "@babel/preset-react",
-                  { runtime: "automatic", development: !IS_PRODUCTION },
-                ],
+                ["@babel/preset-react", { runtime: "automatic", development: !IS_PRODUCTION }],
               ],
             },
           },
         ],
-      },
-      {
-        test: /\.css$/i,
-        use: [{ loader: "style-loader" }, { loader: "css-loader" }],
       },
       {
         test: /\.(eot|ttf|woff|woff2|svg|png|gif|jpe?g|ico)$/,
@@ -64,9 +57,8 @@ module.exports = {
       template: "./index.template.html",
       templateParameters: {
         includeTestData: !IS_PRODUCTION,
-      }
+      },
     }),
     ...(IS_PRODUCTION ? [new InlineChunkHtmlPlugin(HtmlWebpackPlugin, [/\.js$/])] : []),
   ],
 };
-
