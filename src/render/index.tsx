@@ -10,7 +10,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const data = JSON.parse(dataElement.innerHTML);
 
-  console.log(data);
-
   render(<Graph graph={data} />, document.getElementById("root"));
 });

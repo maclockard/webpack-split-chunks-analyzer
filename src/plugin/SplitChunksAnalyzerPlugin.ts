@@ -87,13 +87,15 @@ export class SplitChunksAnalyzerPlugin {
 
         const chunks = chainFrom(chunkGroup.chunks)
           .map<ChunkData>((chunk) => {
-            const chunkSize = chunk.size();
+            const file = Array.from(chunk.files)[0];
+
+            const chunkSize = compilation.assets[file].size();
 
             const modules = chainFrom(chunk.getModules())
               .map((mod) => {
                 const moduleName =
                   typeof (mod as NormalModule).userRequest === "string"
-                    ? (mod as NormalModule).userRequest
+                    ? path.relative(compilation.compiler.context, (mod as NormalModule).userRequest)
                     : // TODO make this a real name
                       "<unknown>";
                 const moduleSize = mod.size();
@@ -108,7 +110,7 @@ export class SplitChunksAnalyzerPlugin {
               .sort((a, b) => b.size - a.size);
 
             return {
-              name: chunk.files.values().next().value as string,
+              name: file,
               size: chunkSize,
               displaySize: prettyBytes(chunkSize),
               modules,
