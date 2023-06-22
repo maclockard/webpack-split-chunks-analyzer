@@ -1,6 +1,6 @@
 {
   "name": "webpack-split-chunks-analyzer",
-  "version": "0.2.4",
+  "version": "0.2.6",
   "description": "Debug how your application is dynamically loaded by webpack",
   "keywords": [
     "webpack",
