@@ -76,7 +76,7 @@ export class SplitChunksAnalyzerPlugin {
     chainFrom(chunkGroups)
       .filter((chunkGroup) => chunkGroup.chunks.length > 0 || chunkGroup.getChildren().length > 0)
       .forEach((chunkGroup) => {
-        const splitOriginFileName = chunkGroup.origins[0]?.request.split("/");
+        const splitOriginFileName = chunkGroup.origins[0]?.request?.split("/");
         const originName = splitOriginFileName?.[splitOriginFileName.length - 1];
 
         const chunkGroupSize = chainFrom(chunkGroup.getFiles())
