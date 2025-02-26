@@ -1,4 +1,5 @@
 import React from "react";
+
 import type { ChunkGroupNodeData } from "../sharedTypes";
 
 export interface NodeSummaryProps {

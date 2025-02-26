@@ -1,16 +1,16 @@
-import { promises } from "fs";
+import { promises } from "node:fs";
 import type { Compiler, NormalModule, Stats } from "webpack";
-import path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
+import path from "node:path";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { chainFrom } from "transducist";
 import * as R from "runtypes";
-import ELK from "elkjs";
-import type { ElkPrimitiveEdge, ElkNode } from "elkjs";
+import Dagre from '@dagrejs/dagre';
 import prettyBytes from "pretty-bytes";
 import cheerio from "cheerio";
 
 import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData } from "../sharedTypes";
+
 
 const { writeFile, readFile } = promises;
 
@@ -31,7 +31,6 @@ const DEFAULT_OPTIONS: RequiredOptions = {
 export class SplitChunksAnalyzerPlugin {
   private options: RequiredOptions;
   private compiler: Compiler | undefined = undefined;
-  private elk = new ELK();
 
   public constructor(userOptions: SplitChunksAnalyzerOptions = {}) {
     SplitChunksAnalyzerOptions.check(userOptions);
@@ -51,17 +50,17 @@ export class SplitChunksAnalyzerPlugin {
     // the included webpack types are a bit lacking so we cast
     const compilation = stats.compilation;
 
-    const nodeDataIndex: Record<string, ChunkGroupNodeData> = {};
-    const edgeDataIndex: Record<string, ChunkGroupEdgeData> = {};
-    const elkGraph: ElkNode & { children: ElkNode[]; edges: ElkPrimitiveEdge[] } = {
-      layoutOptions: {
-        "elk.algorithm": "org.eclipse.elk.mrtree",
-        "org.eclipse.elk.direction": "DOWN",
-      },
-      id: "root",
-      children: [],
+    const dagreGraph = new Dagre.graphlib.Graph();
+
+    dagreGraph.setDefaultEdgeLabel(() => ({}));
+    dagreGraph.setGraph({ rankdir: "TB" })
+
+    const graph: ChunkGroupGraph = {
+      buildName: stats.compilation.name ?? stats.hash ?? "<unknown>",
+      nodes: {},
       edges: [],
     };
+
 
     const prodAssetsIds = chainFrom(Object.keys(compilation.assets))
       .filter((id) => !id.endsWith(".LICENSE"))
@@ -70,8 +69,6 @@ export class SplitChunksAnalyzerPlugin {
 
     const chunkGroups = compilation.chunkGroups;
     const entrypointIds = Array.from(compilation.entrypoints.keys());
-
-    let edgeIdCounter = 0;
 
     chainFrom(chunkGroups)
       .filter((chunkGroup) => chunkGroup.chunks.length > 0 || chunkGroup.getChildren().length > 0)
@@ -124,19 +121,19 @@ export class SplitChunksAnalyzerPlugin {
 
         const displaySize = prettyBytes(chunkGroupSize);
 
-        nodeDataIndex[chunkGroup.id] = {
+        dagreGraph.setNode(chunkGroup.id, {width: 170, height: 55});
+
+      graph.nodes[chunkGroup.id] = {
+        id: chunkGroup.id,
+        data: {
           label: `${name} (${displaySize})`,
           name,
           size: chunkGroupSize,
           displaySize,
           entryPoint: entrypointIds.includes(chunkGroup.id),
           chunks,
-        };
-        elkGraph.children.push({
-          id: chunkGroup.id,
-          width: 170,
-          height: 55,
-        });
+        } satisfies ChunkGroupNodeData,
+      };
 
         const childOrders = chainFrom(
           Object.entries(chunkGroup.getChildrenByOrders(stats.compilation.moduleGraph, stats.compilation.chunkGraph))
@@ -151,47 +148,30 @@ export class SplitChunksAnalyzerPlugin {
           if (child.chunks.length > 0 || child.getChildren().length > 0) {
             const isPrefetched = childOrders.prefetch?.has(child.id) ?? false;
             const isPreloaded = childOrders.preload?.has(child.id) ?? false;
-            const edgeId = (edgeIdCounter++).toString();
 
-            elkGraph.edges.push({
-              id: edgeId,
-              source: chunkGroup.id,
+            dagreGraph.setEdge(chunkGroup.id, child.id)
+            graph.edges.push({source: chunkGroup.id,
               target: child.id,
-            });
-
-            edgeDataIndex[edgeId] = {
-              kind: isPrefetched ? "prefetch" : isPreloaded ? "preload" : undefined,
-            };
+              data: {
+                kind: isPrefetched ? "prefetch" : isPreloaded ? "preload" : undefined,
+              } satisfies ChunkGroupEdgeData,})
           }
         });
       });
 
-    const elkGraphResult = await this.elk.layout(elkGraph);
+    Dagre.layout(dagreGraph);
 
-    const graph: ChunkGroupGraph = {
-      buildName: stats.compilation.name ?? stats.hash ?? "<unknown>",
-      nodes: {},
-      edges: [],
-    };
+    for (const node of Object.values(graph.nodes)) {
+      const position = dagreGraph.node(node.id);
+      // We are shifting the dagre node position (anchor=center center) to the top left
+      // so it matches the React Flow node anchor point (top left).
+      const x = position.x - (node.measured?.width ?? 0) / 2;
+      const y = position.y - (node.measured?.height ?? 0) / 2;
 
-    for (const elkNode of elkGraphResult.children ?? []) {
-      graph.nodes[elkNode.id] = {
-        id: elkNode.id,
-        position: {
-          x: elkNode.x ?? 0,
-          y: elkNode.y ?? 0,
-        },
-        data: nodeDataIndex[elkNode.id],
-      };
-    }
-
-    for (const elkEdge of (elkGraphResult.edges as ElkPrimitiveEdge[] | undefined) ?? []) {
-      graph.edges.push({
-        id: elkEdge.id,
-        source: elkEdge.source,
-        target: elkEdge.target,
-        data: edgeDataIndex[elkEdge.id],
-      });
+      node.position = {
+        x,
+        y
+      }
     }
 
     const outputFilePath = path.resolve(this.compiler.outputPath, this.options.outputFile);

@@ -1,7 +1,10 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { ReactFlow, MiniMap, Controls, Background, BackgroundVariant, NodeMouseHandler } from "@xyflow/react";
+
 import type { ChunkGroupGraph, ChunkGroupNodeData } from "../sharedTypes";
 import { NodeSummary } from "./NodeSummary";
+
+import "@xyflow/react/dist/style.css";
 
 export interface GraphProps {
   graph: ChunkGroupGraph;
