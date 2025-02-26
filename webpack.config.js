@@ -1,6 +1,7 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const InlineChunkHtmlPlugin = require("react-dev-utils/InlineChunkHtmlPlugin");
+const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -45,6 +46,15 @@ module.exports = {
         ],
       },
       {
+        test: /\.css$/i,
+        use: [
+          IS_PRODUCTION
+            ? MiniCssExtractPlugin.loader
+            : { loader: "css-loader" },
+          { loader: "css-loader" },
+        ],
+      },
+      {
         test: /\.(eot|ttf|woff|woff2|svg|png|gif|jpe?g|ico)$/,
         exclude: /\.inline\.svg$/,
         type: "asset/resource",
@@ -59,6 +69,6 @@ module.exports = {
         includeTestData: !IS_PRODUCTION,
       },
     }),
-    ...(IS_PRODUCTION ? [new InlineChunkHtmlPlugin(HtmlWebpackPlugin, [/\.js$/])] : []),
+    ...(IS_PRODUCTION ? [new InlineChunkHtmlPlugin(HtmlWebpackPlugin, [/\.js$/]), new MiniCssExtractPlugin()] : []),
   ],
 };

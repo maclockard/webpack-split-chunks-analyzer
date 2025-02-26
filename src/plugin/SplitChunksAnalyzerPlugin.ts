@@ -4,7 +4,6 @@ import path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { chainFrom } from "transducist";
-import * as R from "runtypes";
 import Dagre from '@dagrejs/dagre';
 import prettyBytes from "pretty-bytes";
 import cheerio from "cheerio";
@@ -14,12 +13,10 @@ import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData
 
 const { writeFile, readFile } = promises;
 
-export const SplitChunksAnalyzerOptions = R.Object({
-  outputFile: R.String.optional(),
-  openOnFinish: R.Boolean.optional(),
-});
-
-export type SplitChunksAnalyzerOptions = R.Static<typeof SplitChunksAnalyzerOptions>;
+export interface SplitChunksAnalyzerOptions {
+  outputFile?: string,
+  openOnFinish?: boolean,
+};
 
 type RequiredOptions = Required<SplitChunksAnalyzerOptions>;
 
@@ -33,7 +30,6 @@ export class SplitChunksAnalyzerPlugin {
   private compiler: Compiler | undefined = undefined;
 
   public constructor(userOptions: SplitChunksAnalyzerOptions = {}) {
-    SplitChunksAnalyzerOptions.check(userOptions);
     this.options = { ...DEFAULT_OPTIONS, ...userOptions };
   }
 
@@ -61,6 +57,7 @@ export class SplitChunksAnalyzerPlugin {
       edges: [],
     };
 
+    let edgeIdCounter = 0;
 
     const prodAssetsIds = chainFrom(Object.keys(compilation.assets))
       .filter((id) => !id.endsWith(".LICENSE"))
@@ -125,6 +122,10 @@ export class SplitChunksAnalyzerPlugin {
 
       graph.nodes[chunkGroup.id] = {
         id: chunkGroup.id,
+        position: {
+          x: 0,
+          y: 0,
+        },
         data: {
           label: `${name} (${displaySize})`,
           name,
@@ -150,7 +151,9 @@ export class SplitChunksAnalyzerPlugin {
             const isPreloaded = childOrders.preload?.has(child.id) ?? false;
 
             dagreGraph.setEdge(chunkGroup.id, child.id)
-            graph.edges.push({source: chunkGroup.id,
+            graph.edges.push({
+              id: (edgeIdCounter++).toString(),
+              source: chunkGroup.id,
               target: child.id,
               data: {
                 kind: isPrefetched ? "prefetch" : isPreloaded ? "preload" : undefined,

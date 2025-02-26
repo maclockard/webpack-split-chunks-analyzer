@@ -1,4 +1,4 @@
-import type { Node, Edge } from "react-flow-renderer";
+import type { Node, Edge } from "@xyflow/react";
 
 export interface ModuleData {
   name: string;
@@ -20,12 +20,14 @@ export interface ChunkGroupNodeData {
   displaySize: string;
   entryPoint: boolean;
   chunks: ChunkData[];
+  [key: string]: unknown;
 }
 
 export type ChunkGroupEdgeKind = "prefetch" | "preload";
 
 export interface ChunkGroupEdgeData {
   kind?: ChunkGroupEdgeKind;
+  [key: string]: unknown;
 }
 
 export interface ChunkGroupGraph {
