@@ -4,6 +4,6 @@
   "search.exclude": {
     "node_modules": true,
     "lib": true,
-    "yarn.lock": true
+    "pnpm-lock.yaml": true
   }
 }

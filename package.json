@@ -24,7 +24,7 @@
     "src"
   ],
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   },
   "lint-staged": {
     "./**/*.{ts,js,json,md,html}": [
@@ -34,7 +34,7 @@
   "scripts": {
     "build": "npm-run-all build:plugin build:dist",
     "build:plugin": "tsc",
-    "watch:plugin": "yarn build -w",
+    "watch:plugin": "pnpm build -w",
     "build:dist": "NODE_ENV=production webpack-cli --progress --config webpack.config.js && rm dist/main.js",
     "watch:dist": "webpack-dev-server --progress --config webpack.config.js",
     "clean": "rm -rf lib dist node_modules"
