@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { chainFrom } from "transducist";
 import Dagre from '@dagrejs/dagre';
 import prettyBytes from "pretty-bytes";
-import cheerio from "cheerio";
+import * as cheerio from 'cheerio';
 
 import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData } from "../sharedTypes";
 
@@ -14,7 +14,7 @@ import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData
 const { writeFile, readFile } = promises;
 
 export interface SplitChunksAnalyzerOptions {
-  outputFile?: string,
+  outputFile?: string | string[],
   openOnFinish?: boolean,
 };
 
@@ -176,19 +176,25 @@ export class SplitChunksAnalyzerPlugin {
         y
       }
     }
+    const baseHtml = await readFile(path.resolve(__dirname, "../../dist/index.html"));
 
-    const outputFilePath = path.resolve(this.compiler.outputPath, this.options.outputFile);
+    let lastPath: string | undefined = undefined;
 
-    const html = await readFile(path.resolve(__dirname, "../../dist/index.html"));
+    const outputFiles = Array.isArray(this.options.outputFile) ? this.options.outputFile : [this.options.outputFile];
+    for (const outputFile of outputFiles) {
+      const outputFilePath = path.resolve(this.compiler.outputPath, outputFile);
 
-    const $ = cheerio.load(html);
+      const $ = cheerio.load(baseHtml);
 
-    $("head").append(`<script type="application/json" id="data">${JSON.stringify(graph)}</script>`);
+      $("head").append(`<script type="application/json" id="data">${JSON.stringify(graph)}</script>`);
 
-    await writeFile(outputFilePath, $.html());
+      await writeFile(outputFilePath, $.html());
+      lastPath = outputFilePath;
+    }
 
-    if (this.options.openOnFinish) {
-      await promisify(exec)(`open ${outputFilePath}`);
+
+    if (this.options.openOnFinish && lastPath != null) {
+      await promisify(exec)(`open ${lastPath}`);
     }
   };
 }
