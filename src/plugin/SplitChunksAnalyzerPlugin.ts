@@ -14,6 +14,7 @@ import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData
 const { writeFile, readFile } = promises;
 
 export interface SplitChunksAnalyzerOptions {
+  excludePattern?: RegExp[],
   outputFile?: string | string[],
   openOnFinish?: boolean,
 };
@@ -21,6 +22,7 @@ export interface SplitChunksAnalyzerOptions {
 type RequiredOptions = Required<SplitChunksAnalyzerOptions>;
 
 const DEFAULT_OPTIONS: RequiredOptions = {
+  excludePattern: [],
   outputFile: "split-chunks-report.html",
   openOnFinish: false,
 };
@@ -111,6 +113,7 @@ export class SplitChunksAnalyzerPlugin {
             };
           })
           .filter((chunk) => prodAssetsIds.has(chunk.name))
+          .filter((chunk) => !this.options.excludePattern.some(r => r.test(chunk.name)))
           .toArray()
           .sort((a, b) => b.size - a.size);
 
@@ -120,21 +123,21 @@ export class SplitChunksAnalyzerPlugin {
 
         dagreGraph.setNode(chunkGroup.id, {width: 170, height: 55});
 
-      graph.nodes[chunkGroup.id] = {
-        id: chunkGroup.id,
-        position: {
-          x: 0,
-          y: 0,
-        },
-        data: {
-          label: `${name} (${displaySize})`,
-          name,
-          size: chunkGroupSize,
-          displaySize,
-          entryPoint: entrypointIds.includes(chunkGroup.id),
-          chunks,
-        } satisfies ChunkGroupNodeData,
-      };
+        graph.nodes[chunkGroup.id] = {
+          id: chunkGroup.id,
+          position: {
+            x: 0,
+            y: 0,
+          },
+          data: {
+            label: `${name} (${displaySize})`,
+            name,
+            size: chunkGroupSize,
+            displaySize,
+            entryPoint: entrypointIds.includes(chunkGroup.id),
+            chunks,
+          } satisfies ChunkGroupNodeData,
+        };
 
         const childOrders = chainFrom(
           Object.entries(chunkGroup.getChildrenByOrders(stats.compilation.moduleGraph, stats.compilation.chunkGraph))
