@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { Graph } from "./Graph";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -10,5 +10,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const data = JSON.parse(dataElement.innerHTML);
 
-  render(<Graph graph={data} />, document.getElementById("root"));
+  const rootElement = document.getElementById("root");
+  if (rootElement == null) {
+    throw new Error("Missing root element");
+  }
+
+  const reactRoot = createRoot(rootElement);
+  reactRoot.render(<Graph graph={data} />);
 });

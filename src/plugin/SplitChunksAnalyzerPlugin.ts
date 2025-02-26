@@ -14,7 +14,7 @@ import type { ChunkData, ChunkGroupEdgeData, ChunkGroupGraph, ChunkGroupNodeData
 
 const { writeFile, readFile } = promises;
 
-export const SplitChunksAnalyzerOptions = R.Record({
+export const SplitChunksAnalyzerOptions = R.Object({
   outputFile: R.String.optional(),
   openOnFinish: R.Boolean.optional(),
 });

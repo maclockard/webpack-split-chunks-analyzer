@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import ReactFlow, { MiniMap, Controls, Background, BackgroundVariant } from "react-flow-renderer";
+import { ReactFlow, MiniMap, Controls, Background, BackgroundVariant, NodeMouseHandler } from "@xyflow/react";
 import type { ChunkGroupGraph, ChunkGroupNodeData } from "../sharedTypes";
 import { NodeSummary } from "./NodeSummary";
 
@@ -12,7 +12,7 @@ export const Graph: React.ComponentType<GraphProps> = React.memo(function Graph(
 
   const [nodeData, setNodeData] = useState<ChunkGroupNodeData>();
 
-  const onNodeClick = useCallback((_evt, node: ChunkGroupGraph["nodes"][string]) => {
+  const onNodeClick: NodeMouseHandler = useCallback((_evt, node: ChunkGroupGraph["nodes"][string]) => {
     setNodeData(node.data);
   }, []);
 
